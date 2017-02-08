@@ -28,16 +28,22 @@ import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
+import org.apache.log4j.Logger;
 import org.apache.poi.EncryptedDocumentException;
+import org.apache.poi.hssf.record.CFRuleBase.ComparisonOperator;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule;
+import org.apache.poi.xssf.usermodel.XSSFFontFormatting;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFSheetConditionalFormatting;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -54,14 +60,19 @@ import finance.portfolio.helper.Scraper;
  */
 public class Analyzer {
 	
-	private static final String BASE_DIR = "C:/Users/david.sequeira/Documents/Trade/";
+	private static final String BASE_DIR = "f:/Documents/Trade/";
 
 	private static final int START_POINT_COL_INDEX = 9;
 	
 	private static final SimpleDateFormat DATE_FORMAT_IN = new SimpleDateFormat("dd MMM yyyy");//03 May 2016
 	private static final SimpleDateFormat DATE_FORMAT_OUT = new SimpleDateFormat("MM/dd/yyyy");//10/19/2016
-	
 
+	private static final int MARKET_PRICE_COLUMN = 5;
+
+	private static final boolean GAINERS_LOSERS = true;
+	
+	static final org.apache.log4j.Logger log = Logger.getLogger(Analyzer.class.getName());
+	
 	//Create blank workbook
     XSSFWorkbook workbook;
     String filename;
@@ -95,11 +106,16 @@ public class Analyzer {
 		//Analyzer a = new Analyzer(BASE_DIR+"20161011_12.xlsx");
 		Analyzer a = new Analyzer(null);
 		
-		a.gather();
-		a.merge("MG_B","WG_B");
-		a.merge("ML_B","WG_B");
-		a.merge("MG_A","WG_A");
-		a.merge("ML_A","WG_A");
+		if(GAINERS_LOSERS){
+			a.gather();
+			Map<String,List<Stock>> dgwg_a = a.merge("DG_A","WG_A");
+			a.merge(dgwg_a, "ML_A");
+			a.merge("DG_B","WG_B");
+			a.merge("MG_B","WG_B");
+			a.merge("ML_B","WG_B");
+			a.merge("MG_A","WG_A");
+			a.merge("ML_A","WG_A");
+		}
 		
 		
 		//List<Stock> dailyGainersA  = a.getDailyGainers(Group.A);
@@ -112,6 +128,8 @@ public class Analyzer {
 		
 	}
 	
+	
+
 	/*
 	 * Updates scrip values into the trade.xlsx excel sheet
 	 */
@@ -119,8 +137,22 @@ public class Analyzer {
 		String fileName = BASE_DIR+"Equity.xlsx";
 		try {
 			InputStream inp = new FileInputStream(fileName);
-			Workbook trade =  WorkbookFactory.create(inp);
-			Sheet portfolio = trade.getSheet("portfolio");
+			//POIFSFileSystem fs = new POIFSFileSystem(inp); 
+			
+			XSSFWorkbook trade =  (XSSFWorkbook) WorkbookFactory.create(inp);
+			XSSFSheet portfolio = trade.getSheet("portfolio");
+			XSSFSheetConditionalFormatting my_cond_format_layer = portfolio.getSheetConditionalFormatting();
+			XSSFConditionalFormattingRule my_rule = my_cond_format_layer.createConditionalFormattingRule(ComparisonOperator.GT, "F12");
+			
+			 XSSFFontFormatting my_rule_pattern = my_rule.createFontFormatting();
+			 
+			 
+             my_rule_pattern.setFontColorIndex(IndexedColors.GREEN.getIndex());
+             
+             
+             CellRangeAddress[] my_data_range = {CellRangeAddress.valueOf("J12:DC12")};
+             my_cond_format_layer.addConditionalFormatting(my_data_range,my_rule);
+             
 			List<String> scripCodes = getScrips(portfolio);
 			updateSheetwithData(portfolio,scripCodes);
 			FileOutputStream fileOut = new FileOutputStream(fileName);
@@ -149,14 +181,17 @@ public class Analyzer {
 			String scripCode = iterator.next();
 			String string = rediffCodes.get(scripCode);
 			if(string!=null){
-				String url = "http://money.rediff.com/money/jsp/chart_6month_new1.jsp?companyCode="+string+"&all=1";
-				System.out.println(url);
+				String url_monthly = "http://money.rediff.com/money/jsp/chart_6month_new1.jsp?companyCode="+string+"&all=1";
+				String url_day = "http://money.rediff.com/money1/chart_1day_new.php?companyCode="+string;
+				System.out.println(url_monthly);
 				Scraper s = new Scraper();
 				
 				//Document doc = s.getAsXml(url);
 				Document doc = null;
+				Document docdaily = null;
 				try {
-					doc = s.getProcessedXMLDocument(s.getUrlContents(url));
+					doc = s.getProcessedXMLDocument(s.getUrlContents(url_monthly));
+					docdaily = s.getProcessedXMLDocument(s.getUrlContents(url_day));
 				} catch (FileNotFoundException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -170,26 +205,38 @@ public class Analyzer {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
-				System.out.println(doc.getChildNodes().getLength());
-				Map<String,String> values = getScripMap(doc);
+				//System.out.println(doc.getChildNodes().getLength());
+				Map<String,String> values = getScripMap(doc);								
+				String dayValue = getDayScrip(docdaily);
+				System.out.println("Days Value:"+dayValue);
 				scripsWithValues.put(string, values);
-				
-				int lastColNum =  portfolio.getRow(0).getLastCellNum();
-				Row r = getRow(portfolio, scripCode);
-				for(int i=START_POINT_COL_INDEX;i<lastColNum;i++){
-					String key = DATE_FORMAT_OUT.format(portfolio.getRow(0).getCell(i).getDateCellValue());
 					
-					String price = values.get(key);
-					if(price!=null){
-						System.out.println("Key: "+key+ " Price: "+price);
-						Cell c = r.createCell(i, CellType.NUMERIC);
-						c.setCellValue(Double.parseDouble(price));
+					if(dayValue!=null){	
+					int lastColNum =  portfolio.getRow(0).getLastCellNum();
+					Row r = getRow(portfolio, scripCode);
+					log.info("Row:"+r.getRowNum());
+					log.info(scripCode);
+					for(int i=START_POINT_COL_INDEX;i<lastColNum;i++){
+						String key = DATE_FORMAT_OUT.format(portfolio.getRow(0).getCell(i).getDateCellValue());
+						
+						String price = values.get(key);
+						if(price!=null){
+							
+							
+							Cell c = r.createCell(i, CellType.NUMERIC);
+							c.setCellValue(Double.parseDouble(price));
+							log.info("Col Index"+c.getColumnIndex());
+							log.info("Key: "+key+ " Price: "+price);
+						}
+						
 					}
-					
+					//Set todays latest Value				
+					Cell c = r.createCell(MARKET_PRICE_COLUMN, CellType.NUMERIC);
+					c.setCellValue(Double.parseDouble(dayValue));
 				}
 				
 			}
-			System.out.println(scripsWithValues);
+			//System.out.println(scripsWithValues);
 		}
 		
 		updateSheet(portfolio);
@@ -202,7 +249,7 @@ public class Analyzer {
 
 	private Map<String, String> getScripMap(Document document) {
 		XPath xPath =  XPathFactory.newInstance().newXPath();
-		Map<String,String> values = new HashMap<String,String>();
+		Map<String,String> values = new TreeMap<String,String>();
 		try {
 			
 			System.out.println(document.getChildNodes().item(0).getNodeName());
@@ -232,6 +279,27 @@ public class Analyzer {
 			e.printStackTrace();
 		}
 		return values;
+	}
+	
+	private String getDayScrip(Document document) {
+		XPath xPath =  XPathFactory.newInstance().newXPath();
+		String value = null;
+		try {
+			
+			System.out.println(document.getChildNodes().item(0).getNodeName());
+			NodeList list =  (NodeList) xPath.compile("/graph/set").evaluate(document,XPathConstants.NODESET);
+			System.out.println("No of Rows : "+list.getLength());
+			
+			if(list!=null && list.getLength()>0){
+				Element node = (Element)list.item(list.getLength()-1);
+				value = node.getAttribute("value");
+			}	
+			
+		} catch (XPathExpressionException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return value;
 	}
 
 	private List<String> getScrips(Sheet portfolio) {
@@ -263,19 +331,22 @@ public class Analyzer {
 			for (i = 1; i <= lastRow; i++) {
 				r = portfolio.getRow(i);
 				String name = ""+(int)r.getCell(0).getNumericCellValue();
-				System.out.println("param:"+scripCode+" cellVal:"+name);
+				//System.out.println("param:"+scripCode+" cellVal:"+name);
 				if(name.equals(scripCode)){
 					break;
 				}
 			}
-			System.out.println("RowNum"+r.getCell(0).getNumericCellValue());
+			//System.out.println("RowNum"+r.getCell(0).getNumericCellValue());
 		}
 		return r;
 	}
 
-	private Sheet merge(String string, String string2) {
+	private Map<String,List<Stock>> merge(String string, String string2) {
 		Sheet sheet1 = workbook.getSheet(string);
+		
+		Map<String,List<Stock>> mergedData = new TreeMap<String,List<Stock>>();
 		Map<String,Stock> list1 = new TreeMap<String,Stock>();
+		
 		
 		populateListFromSheet(sheet1, list1);
 		
@@ -297,7 +368,9 @@ public class Analyzer {
 		         if(rowid==0){
 		        	 addMergeHeader(row);
 		         }			
-				
+		         List<Stock> mergedStocks = new ArrayList<Stock>();
+		         mergedStocks.add(list1.get(name));
+		         mergedStocks.add(list2.get(name));
 				 row.createCell(0).setCellValue(name);
 		         row.createCell(1).setCellValue(list1.get(name).getChange()+"");
 		         row.createCell(2).setCellValue(list2.get(name).getChange()+"");
@@ -308,10 +381,26 @@ public class Analyzer {
 		}
 		
 		writeWorkbookToFile();
-		return sheet1;
+		return mergedData;
 		
 	}
 
+	private void merge(Map<String, List<Stock>> dgwg_a, String sheetName) {
+		Sheet sheet1 = workbook.getSheet(sheetName);
+		
+		Map<String,List<Stock>> mergedData = new TreeMap<String,List<Stock>>();
+		Map<String,Stock> list1 = new TreeMap<String,Stock>();
+		
+		populateListFromSheet(sheet1, list1);
+		for (Iterator<String> iterator = list1.keySet().iterator(); iterator.hasNext();) {
+			String name = (String) iterator.next();
+			if(dgwg_a.keySet().contains(name)){
+				System.out.println("Merged: "+name);
+			}
+		}
+		
+	}
+	
 	private void addMergeHeader(XSSFRow row) {
 		row.createCell(0).setCellValue("Name");
 		row.createCell(1).setCellValue("Monnthly Change %");
