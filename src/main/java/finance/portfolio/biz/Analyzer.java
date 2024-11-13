@@ -655,6 +655,13 @@ public class Analyzer {
 		}
 	}
 
+/*
+ * Creates basic Sheets
+ * DG_A - Daily Gainers A group
+ * DL_A - Daily Losers A group
+ * WG -> Weekly Gainers
+ * Wl -> 
+ */
 	private void gather() throws FileNotFoundException, ParserConfigurationException, SAXException, IOException {
 		long start = System.currentTimeMillis();
 		for(String g:group){
