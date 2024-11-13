@@ -87,7 +87,7 @@ import finance.portfolio.helper.Scraper;
  */
 public class Analyzer {
 	
-	private static final String BASE_DIR = "e:/David/trade/";
+	private static final String BASE_DIR = "C:Users/David/Documents/Trade/";
 	
 	private static final int START_POINT_COL_INDEX = 9;
 	
