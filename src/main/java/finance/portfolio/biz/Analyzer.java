@@ -660,7 +660,9 @@ public class Analyzer {
  * DG_A - Daily Gainers A group
  * DL_A - Daily Losers A group
  * WG -> Weekly Gainers
- * Wl -> 
+ * WL -> Weekly Losers
+ * MG -> Monthly Gainers
+ * ML -> Monthly Losers
  */
 	private void gather() throws FileNotFoundException, ParserConfigurationException, SAXException, IOException {
 		long start = System.currentTimeMillis();
